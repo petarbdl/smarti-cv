@@ -4,6 +4,8 @@
 
 #include <opencv2/core.hpp>
 
+#include "smarti/types.hpp"
+
 namespace smarti {
 
 // Tunable parameters for the classical (non-learned) knot detector. Defaults are
@@ -38,5 +40,21 @@ struct DetectorParams {
 // Detect knots in a single decoded BGR frame. Returns axis-aligned bounding
 // boxes in the pixel coordinate space of `image`.
 std::vector<cv::Rect> detect_knots(const cv::Mat& image, const DetectorParams& params = {});
+
+// All knots detected on one assembled board, in the board's stitched pixel
+// coordinate space (origin top-left). Width is the sum of the frames' widths
+// (they tile end-to-end along X with no gap/overlap); height is the tallest
+// frame. Knots split across a frame seam are merged into a single box.
+struct BoardKnots {
+    int index = 0;
+    int width = 0;
+    int height = 0;
+    std::vector<cv::Rect> knots;
+};
+
+// Run detect_knots on every frame of `board` (in frameNumber order), translate
+// each frame's boxes into board space by the cumulative X offset, and merge
+// boxes that meet across a seam. Frames are decoded lazily here and released.
+BoardKnots detect_board_knots(const Board& board, const DetectorParams& params = {});
 
 } // namespace smarti

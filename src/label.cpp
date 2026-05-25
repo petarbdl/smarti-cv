@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <fstream>
 #include <sstream>
+#include <stdexcept>
 
 namespace smarti {
 
@@ -46,6 +47,28 @@ cv::Rect to_pixel_rect(const YoloBox& box, const cv::Size& imageSize) {
     w = std::clamp(w, 0, imageSize.width - x);
     h = std::clamp(h, 0, imageSize.height - y);
     return cv::Rect(x, y, w, h);
+}
+
+YoloBox to_yolo_box(const cv::Rect& rect, const cv::Size& imageSize, int classId) {
+    const float fw = std::max(1, imageSize.width);
+    const float fh = std::max(1, imageSize.height);
+    YoloBox box;
+    box.classId = classId;
+    box.cx = (rect.x + rect.width / 2.0f) / fw;
+    box.cy = (rect.y + rect.height / 2.0f) / fh;
+    box.w = rect.width / fw;
+    box.h = rect.height / fh;
+    return box;
+}
+
+void write_yolo_labels(const std::string& path, const std::vector<YoloBox>& boxes) {
+    std::ofstream out(path);
+    if (!out) {
+        throw std::runtime_error("cannot write labels: " + path);
+    }
+    for (const auto& b : boxes) {
+        out << b.classId << ' ' << b.cx << ' ' << b.cy << ' ' << b.w << ' ' << b.h << '\n';
+    }
 }
 
 } // namespace smarti

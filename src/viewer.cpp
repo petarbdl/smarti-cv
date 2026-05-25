@@ -8,6 +8,7 @@
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 
+#include "smarti/detector.hpp"
 #include "smarti/label.hpp"
 
 namespace smarti {
@@ -73,11 +74,13 @@ cv::Mat render_comparison(const cv::Mat& image, const std::vector<cv::Rect>& gro
         return cv::Rect(r.x * scale, r.y * scale, r.width * scale, r.height * scale);
     };
 
+    // Ground truth (if supplied) in green; detections in red. The `detect`
+    // command passes no ground truth, so it shows detections alone.
     for (const auto& r : groundTruth) {
-        cv::rectangle(canvas, scaled(r), cv::Scalar(0, 255, 0), 2); // ground truth: green
+        cv::rectangle(canvas, scaled(r), cv::Scalar(0, 255, 0), 2);
     }
     for (const auto& r : detections) {
-        cv::rectangle(canvas, scaled(r), cv::Scalar(0, 0, 255), 1); // detection: red
+        cv::rectangle(canvas, scaled(r), cv::Scalar(0, 0, 255), 2);
     }
 
     cv::rectangle(canvas, {0, 0}, {canvas.cols, 26}, {0, 0, 0}, cv::FILLED);
@@ -131,6 +134,43 @@ cv::Mat render_board_composite(const Board& board, bool vertical) {
         cv::vconcat(padded, composite);
     } else {
         cv::hconcat(padded, composite);
+    }
+    return composite;
+}
+
+cv::Mat render_board_detections(const Board& board, const BoardKnots& knots) {
+    // Stitch frames left-to-right, top-aligned, padded to the tallest frame —
+    // the exact layout detect_board_knots assumes, so board-space boxes align.
+    std::vector<cv::Mat> tiles;
+    int maxH = 0;
+    for (const auto& ref : board.frames) {
+        cv::Mat image = cv::imread(ref.imagePath, cv::IMREAD_COLOR);
+        if (image.empty()) {
+            continue;
+        }
+        maxH = std::max(maxH, image.rows);
+        tiles.push_back(std::move(image));
+    }
+    if (tiles.empty()) {
+        return cv::Mat(64, 256, CV_8UC3, cv::Scalar(40, 40, 40));
+    }
+
+    std::vector<cv::Mat> padded;
+    const cv::Scalar seam(0, 0, 255);
+    for (std::size_t i = 0; i < tiles.size(); ++i) {
+        const cv::Mat& t = tiles[i];
+        cv::Mat tile(maxH, t.cols, CV_8UC3, cv::Scalar(0, 0, 0));
+        t.copyTo(tile(cv::Rect(0, 0, t.cols, t.rows)));
+        if (i > 0) {
+            cv::line(tile, {0, 0}, {0, maxH - 1}, seam, 1); // frame seam
+        }
+        padded.push_back(std::move(tile));
+    }
+
+    cv::Mat composite;
+    cv::hconcat(padded, composite);
+    for (const auto& r : knots.knots) {
+        cv::rectangle(composite, r, cv::Scalar(0, 0, 255), 2);
     }
     return composite;
 }

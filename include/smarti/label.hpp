@@ -25,4 +25,12 @@ std::vector<YoloBox> load_yolo_labels(const std::string& path);
 // Convert a normalized YOLO box to a pixel rectangle, clamped to the image.
 cv::Rect to_pixel_rect(const YoloBox& box, const cv::Size& imageSize);
 
+// Inverse of to_pixel_rect: convert a pixel rectangle to a normalized YOLO box
+// relative to `imageSize`. `classId` defaults to 0 (the dataset's only class).
+YoloBox to_yolo_box(const cv::Rect& rect, const cv::Size& imageSize, int classId = 0);
+
+// Write YOLO labels (one "class cx cy w h" line each) to `path`, overwriting it.
+// Throws std::runtime_error if the file cannot be opened.
+void write_yolo_labels(const std::string& path, const std::vector<YoloBox>& boxes);
+
 } // namespace smarti

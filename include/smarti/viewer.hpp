@@ -8,6 +8,8 @@
 
 namespace smarti {
 
+struct BoardKnots;
+
 // Render one frame with its ground-truth knot boxes and a status banner,
 // upscaling small frames for readability.
 cv::Mat render_overlay(const Board& board, std::size_t frameIdx);
@@ -25,6 +27,11 @@ cv::Mat render_board_composite(const Board& board, bool vertical);
 // red, plus a status banner. Used by the `detect` command's --save output.
 cv::Mat render_comparison(const cv::Mat& image, const std::vector<cv::Rect>& groundTruth,
                           const std::vector<cv::Rect>& detections, const std::string& status);
+
+// Stitch a board's frames end-to-end along X (as detect_board_knots does) and
+// draw the board-space detected knot boxes in red, with thin red frame seams.
+// `knots` must be in the same board coordinate space the composite builds.
+cv::Mat render_board_detections(const Board& board, const BoardKnots& knots);
 
 // Open an interactive highgui window to browse the dataset frame by frame,
 // overlaying ground-truth knot boxes. `startBoardIndex` selects which board to

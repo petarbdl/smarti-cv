@@ -18,9 +18,11 @@ void print_usage() {
               << "Usage:\n"
               << "  smarti-cv view --dataset <dir> [--board <index>]\n"
               << "      Browse dataset frames with ground-truth knot overlays.\n"
-              << "  smarti-cv detect --dataset <dir> [--board <index>] [--save <dir>]\n"
-              << "      Detect knots in each frame and print their bounding boxes.\n"
-              << "      With --save, write comparison overlays (green=truth, red=detected).\n";
+              << "  smarti-cv detect --dataset <dir> [--board <index>] [--out <dir>] "
+                 "[--save <dir>]\n"
+              << "      Detect knots per board (frames stitched along X).\n"
+              << "      --out  <dir>: write per-board YOLO labels <boardIndex>.txt\n"
+              << "      --save <dir>: write per-board overlay PNGs of the detections\n";
 }
 
 // Minimal flag lookup: returns the value following `flag`, if present.
@@ -121,7 +123,8 @@ int run_detect(int argc, char** argv) {
     }
 
     const auto boards = smarti::load_dataset(*dataset);
-    const auto outDir = get_opt(argc, argv, "--save");
+    const auto outDir = get_opt(argc, argv, "--out");   // per-board YOLO .txt
+    const auto saveDir = get_opt(argc, argv, "--save"); // per-board overlay PNG
 
     int onlyBoard = -1;
     if (const auto board = get_opt(argc, argv, "--board")) {
@@ -133,42 +136,33 @@ int run_detect(int argc, char** argv) {
         if (onlyBoard >= 0 && board.index != onlyBoard) {
             continue;
         }
-        for (std::size_t fi = 0; fi < board.frames.size(); ++fi) {
-            const smarti::FrameRef& ref = board.frames[fi];
-            const cv::Mat image = cv::imread(ref.imagePath, cv::IMREAD_COLOR);
-            if (image.empty()) {
-                std::cerr << "warning: failed to read " << ref.imagePath << "\n";
-                continue;
-            }
 
-            const std::vector<cv::Rect> detections = smarti::detect_knots(image);
-            totalDet += detections.size();
+        const smarti::BoardKnots result = smarti::detect_board_knots(board);
+        totalDet += result.knots.size();
 
-            std::cout << board.index << "_" << ref.frameNumber << ": " << detections.size()
-                      << " knot(s)";
-            for (const auto& r : detections) {
-                std::cout << "  [" << r.x << "," << r.y << "," << r.width << "," << r.height
-                          << "]";
-            }
-            std::cout << "\n";
+        std::cout << "board " << result.index << " (" << result.width << "x" << result.height
+                  << "): " << result.knots.size() << " knot(s)\n";
 
-            if (outDir) {
-                std::vector<cv::Rect> gt;
-                for (const auto& box : smarti::load_yolo_labels(ref.labelPath)) {
-                    gt.push_back(smarti::to_pixel_rect(box, image.size()));
-                }
-                const std::string status =
-                    std::to_string(board.index) + "_" + std::to_string(ref.frameNumber) +
-                    "  truth:" + std::to_string(gt.size()) +
-                    " det:" + std::to_string(detections.size());
-                const std::string out = *outDir + "/board" + std::to_string(board.index) +
-                                        "_frame" + std::to_string(ref.frameNumber) + "_det.png";
-                cv::imwrite(out, smarti::render_comparison(image, gt, detections, status));
+        if (outDir) {
+            // The deliverable: knot polygons (as boxes) in board coordinate
+            // space, normalized to the board's stitched dimensions.
+            std::vector<smarti::YoloBox> labels;
+            labels.reserve(result.knots.size());
+            for (const auto& r : result.knots) {
+                labels.push_back(smarti::to_yolo_box(r, {result.width, result.height}));
             }
+            const std::string out = *outDir + "/" + std::to_string(result.index) + ".txt";
+            smarti::write_yolo_labels(out, labels);
+        }
+
+        if (saveDir) {
+            const std::string out =
+                *saveDir + "/board" + std::to_string(result.index) + "_detected.png";
+            cv::imwrite(out, smarti::render_board_detections(board, result));
         }
     }
 
-    std::cout << "detected " << totalDet << " knot(s) total\n";
+    std::cout << "detected " << totalDet << " knot(s) across all boards\n";
     return 0;
 }
 
