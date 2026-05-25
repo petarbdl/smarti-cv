@@ -6,6 +6,7 @@
 #include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp>
 
+#include "smarti/detector.hpp"
 #include "smarti/frame_loader.hpp"
 #include "smarti/label.hpp"
 #include "smarti/viewer.hpp"
@@ -16,7 +17,10 @@ void print_usage() {
     std::cout << "smarti-cv - wood-board knot tooling\n\n"
               << "Usage:\n"
               << "  smarti-cv view --dataset <dir> [--board <index>]\n"
-              << "      Browse dataset frames with ground-truth knot overlays.\n";
+              << "      Browse dataset frames with ground-truth knot overlays.\n"
+              << "  smarti-cv detect --dataset <dir> [--board <index>] [--save <dir>]\n"
+              << "      Detect knots in each frame and print their bounding boxes.\n"
+              << "      With --save, write comparison overlays (green=truth, red=detected).\n";
 }
 
 // Minimal flag lookup: returns the value following `flag`, if present.
@@ -109,6 +113,65 @@ int run_view(int argc, char** argv) {
     return smarti::run_viewer(boards, startBoard);
 }
 
+int run_detect(int argc, char** argv) {
+    const auto dataset = get_opt(argc, argv, "--dataset");
+    if (!dataset) {
+        std::cerr << "error: detect requires --dataset <dir>\n";
+        return 2;
+    }
+
+    const auto boards = smarti::load_dataset(*dataset);
+    const auto outDir = get_opt(argc, argv, "--save");
+
+    int onlyBoard = -1;
+    if (const auto board = get_opt(argc, argv, "--board")) {
+        onlyBoard = std::stoi(*board);
+    }
+
+    std::size_t totalDet = 0;
+    for (const auto& board : boards) {
+        if (onlyBoard >= 0 && board.index != onlyBoard) {
+            continue;
+        }
+        for (std::size_t fi = 0; fi < board.frames.size(); ++fi) {
+            const smarti::FrameRef& ref = board.frames[fi];
+            const cv::Mat image = cv::imread(ref.imagePath, cv::IMREAD_COLOR);
+            if (image.empty()) {
+                std::cerr << "warning: failed to read " << ref.imagePath << "\n";
+                continue;
+            }
+
+            const std::vector<cv::Rect> detections = smarti::detect_knots(image);
+            totalDet += detections.size();
+
+            std::cout << board.index << "_" << ref.frameNumber << ": " << detections.size()
+                      << " knot(s)";
+            for (const auto& r : detections) {
+                std::cout << "  [" << r.x << "," << r.y << "," << r.width << "," << r.height
+                          << "]";
+            }
+            std::cout << "\n";
+
+            if (outDir) {
+                std::vector<cv::Rect> gt;
+                for (const auto& box : smarti::load_yolo_labels(ref.labelPath)) {
+                    gt.push_back(smarti::to_pixel_rect(box, image.size()));
+                }
+                const std::string status =
+                    std::to_string(board.index) + "_" + std::to_string(ref.frameNumber) +
+                    "  truth:" + std::to_string(gt.size()) +
+                    " det:" + std::to_string(detections.size());
+                const std::string out = *outDir + "/board" + std::to_string(board.index) +
+                                        "_frame" + std::to_string(ref.frameNumber) + "_det.png";
+                cv::imwrite(out, smarti::render_comparison(image, gt, detections, status));
+            }
+        }
+    }
+
+    std::cout << "detected " << totalDet << " knot(s) total\n";
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -121,6 +184,9 @@ int main(int argc, char** argv) {
     try {
         if (command == "view") {
             return run_view(argc, argv);
+        }
+        if (command == "detect") {
+            return run_detect(argc, argv);
         }
     } catch (const std::exception& e) {
         std::cerr << "error: " << e.what() << "\n";

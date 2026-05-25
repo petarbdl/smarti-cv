@@ -60,6 +60,32 @@ cv::Mat render_overlay(const Board& board, std::size_t frameIdx) {
     return image;
 }
 
+cv::Mat render_comparison(const cv::Mat& image, const std::vector<cv::Rect>& groundTruth,
+                          const std::vector<cv::Rect>& detections, const std::string& status) {
+    cv::Mat canvas = image.clone();
+
+    // Upscale small frames so thin boxes and the banner stay legible.
+    int scale = std::max(1, kMinDisplayHeight / std::max(1, canvas.rows));
+    if (scale > 1) {
+        cv::resize(canvas, canvas, {}, scale, scale, cv::INTER_NEAREST);
+    }
+    const auto scaled = [scale](const cv::Rect& r) {
+        return cv::Rect(r.x * scale, r.y * scale, r.width * scale, r.height * scale);
+    };
+
+    for (const auto& r : groundTruth) {
+        cv::rectangle(canvas, scaled(r), cv::Scalar(0, 255, 0), 2); // ground truth: green
+    }
+    for (const auto& r : detections) {
+        cv::rectangle(canvas, scaled(r), cv::Scalar(0, 0, 255), 1); // detection: red
+    }
+
+    cv::rectangle(canvas, {0, 0}, {canvas.cols, 26}, {0, 0, 0}, cv::FILLED);
+    cv::putText(canvas, status, {8, 18}, cv::FONT_HERSHEY_SIMPLEX, 0.55, {255, 255, 255}, 1,
+                cv::LINE_AA);
+    return canvas;
+}
+
 cv::Mat render_board_composite(const Board& board, bool vertical) {
     std::vector<cv::Mat> tiles;
     int maxW = 0;

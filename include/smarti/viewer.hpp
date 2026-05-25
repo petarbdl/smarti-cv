@@ -20,6 +20,12 @@ cv::Mat render_overlay(const Board& board, std::size_t frameIdx);
 // cross-axis size, and a thin red separator marks each frame seam.
 cv::Mat render_board_composite(const Board& board, bool vertical);
 
+// Draw a detection-vs-ground-truth comparison over a copy of `image` (upscaling
+// small frames for readability): ground-truth boxes in green, detected boxes in
+// red, plus a status banner. Used by the `detect` command's --save output.
+cv::Mat render_comparison(const cv::Mat& image, const std::vector<cv::Rect>& groundTruth,
+                          const std::vector<cv::Rect>& detections, const std::string& status);
+
 // Open an interactive highgui window to browse the dataset frame by frame,
 // overlaying ground-truth knot boxes. `startBoardIndex` selects which board to
 // open on (-1 = first). Blocks until the user quits; returns a process exit code.
