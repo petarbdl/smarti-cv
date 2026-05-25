@@ -1,0 +1,146 @@
+#include "smarti/viewer.hpp"
+
+#include <algorithm>
+#include <iostream>
+#include <string>
+
+#include <opencv2/highgui.hpp>
+#include <opencv2/imgcodecs.hpp>
+#include <opencv2/imgproc.hpp>
+
+#include "smarti/label.hpp"
+
+namespace smarti {
+
+namespace {
+
+constexpr char kWindow[] = "smarti-cv viewer";
+constexpr int kMinDisplayHeight = 360; // upscale small frames for readability
+
+// Key codes. highgui returns letter keys directly; arrow keys come through
+// waitKeyEx as platform-specific extended codes (Windows values below).
+constexpr int kEsc = 27;
+constexpr int kArrowLeft = 0x250000;
+constexpr int kArrowUp = 0x260000;
+constexpr int kArrowRight = 0x270000;
+constexpr int kArrowDown = 0x280000;
+
+} // namespace
+
+cv::Mat render_overlay(const Board& board, std::size_t frameIdx) {
+    const FrameRef& ref = board.frames[frameIdx];
+
+    cv::Mat image = cv::imread(ref.imagePath, cv::IMREAD_COLOR);
+    if (image.empty()) {
+        image = cv::Mat(kMinDisplayHeight, 640, CV_8UC3, cv::Scalar(40, 40, 40));
+        cv::putText(image, "failed to read " + ref.imagePath, {10, 30},
+                    cv::FONT_HERSHEY_SIMPLEX, 0.5, {0, 0, 255}, 1);
+        return image;
+    }
+
+    const std::vector<YoloBox> boxes = load_yolo_labels(ref.labelPath);
+
+    // Upscale small frames
+    int scale = std::max(1, kMinDisplayHeight / std::max(1, image.rows));
+    if (scale > 1) {
+        cv::resize(image, image, {}, scale, scale, cv::INTER_NEAREST);
+    }
+
+    for (std::size_t i = 0; i < boxes.size(); ++i) {
+        cv::Rect r = to_pixel_rect(boxes[i], image.size());
+        cv::rectangle(image, r, cv::Scalar(0, 255, 0), 2);
+        cv::putText(image, std::to_string(i), {r.x + 2, std::max(r.y - 4, 12)},
+                    cv::FONT_HERSHEY_SIMPLEX, 0.5, {0, 255, 0}, 1, cv::LINE_AA);
+    }
+
+    // Status banner across the top.
+    const std::string status = "board " + std::to_string(board.index) + "  frame " +
+                               std::to_string(ref.frameNumber) + "   [" +
+                               std::to_string(frameIdx + 1) + "/" +
+                               std::to_string(board.frames.size()) + "]   knots: " +
+                               std::to_string(boxes.size());
+    cv::rectangle(image, {0, 0}, {image.cols, 26}, {0, 0, 0}, cv::FILLED);
+    cv::putText(image, status, {8, 18}, cv::FONT_HERSHEY_SIMPLEX, 0.55, {255, 255, 255}, 1,
+                cv::LINE_AA);
+    return image;
+}
+
+int run_viewer(const std::vector<Board>& boards, int startBoardIndex) {
+    if (boards.empty()) {
+        std::cerr << "no boards to view\n";
+        return 1;
+    }
+
+    std::size_t bi = 0;
+    if (startBoardIndex >= 0) {
+        for (std::size_t i = 0; i < boards.size(); ++i) {
+            if (boards[i].index == startBoardIndex) {
+                bi = i;
+                break;
+            }
+        }
+    }
+    std::size_t fi = 0;
+
+    std::cout << "Viewer controls: arrows or a/d (frame), n/p (board), q/Esc (quit)\n";
+    cv::namedWindow(kWindow, cv::WINDOW_AUTOSIZE);
+
+    bool running = true;
+    while (running) {
+        cv::imshow(kWindow, render_overlay(boards[bi], fi));
+        const int key = cv::waitKeyEx(0);
+
+        std::cout << "Viewer shows: board " << boards[bi].index << ", frame " << boards[bi].frames[fi].frameNumber << "\n";
+
+        switch (key) {
+        case 'q':
+        case kEsc:
+            running = false;
+            break;
+        case kArrowRight:
+        case 'd': // next frame, rolling into the next board
+            if (fi + 1 < boards[bi].frames.size()) {
+                ++fi;
+            } else if (bi + 1 < boards.size()) {
+                ++bi;
+                fi = 0;
+            }
+            break;
+        case kArrowLeft:
+        case 'a': // previous frame, rolling into the previous board
+            if (fi > 0) {
+                --fi;
+            } else if (bi > 0) {
+                --bi;
+                fi = boards[bi].frames.size() - 1;
+            }
+            break;
+        case kArrowDown:
+        case 'n': // next board
+            if (bi + 1 < boards.size()) {
+                ++bi;
+                fi = 0;
+            }
+            break;
+        case kArrowUp:
+        case 'p': // previous board
+            if (bi > 0) {
+                --bi;
+                fi = 0;
+            }
+            break;
+        default:
+            break;
+        }
+
+        // Window closed via the title-bar X.
+        if (cv::getWindowProperty(kWindow, cv::WND_PROP_VISIBLE) < 1) {
+            running = false;
+        }
+    }
+
+    cv::destroyAllWindows();
+    return 0;
+}
+
+} // namespace smarti

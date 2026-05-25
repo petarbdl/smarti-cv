@@ -17,6 +17,7 @@ add_executable(smarti-cv
   src/main.cpp
   src/frame_loader.cpp
   src/label.cpp
+  src/viewer.cpp
 )
 target_include_directories(smarti-cv PRIVATE ${CMAKE_SOURCE_DIR}/include)
 target_link_libraries(smarti-cv PRIVATE ${OpenCV_LIBS})

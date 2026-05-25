@@ -4,9 +4,11 @@
 #include <string>
 
 #include <opencv2/core.hpp>
+#include <opencv2/imgcodecs.hpp>
 
 #include "smarti/frame_loader.hpp"
 #include "smarti/label.hpp"
+#include "smarti/viewer.hpp"
 
 namespace {
 
@@ -53,8 +55,34 @@ int run_view(int argc, char** argv) {
               << labelled << " with labels, " << totalKnots << " knots) from " << *dataset
               << "\n";
 
-    // TODO(phase1 commit 4): open a highgui window and render frames + overlays.
-    return 0;
+    int startBoard = -1;
+    if (const auto board = get_opt(argc, argv, "--board")) {
+        startBoard = std::stoi(*board);
+    }
+
+    // Headless: render the start board's frames to PNGs and exit (no window).
+    if (const auto outDir = get_opt(argc, argv, "--save")) {
+        std::size_t bi = 0;
+        if (startBoard >= 0) {
+            for (std::size_t i = 0; i < boards.size(); ++i) {
+                if (boards[i].index == startBoard) {
+                    bi = i;
+                    break;
+                }
+            }
+        }
+        const smarti::Board& board = boards[bi];
+        for (std::size_t fi = 0; fi < board.frames.size(); ++fi) {
+            const std::string out = *outDir + "/board" + std::to_string(board.index) +
+                                    "_frame" + std::to_string(board.frames[fi].frameNumber) +
+                                    ".png";
+            cv::imwrite(out, smarti::render_overlay(board, fi));
+            std::cout << "wrote " << out << "\n";
+        }
+        return 0;
+    }
+
+    return smarti::run_viewer(boards, startBoard);
 }
 
 } // namespace
