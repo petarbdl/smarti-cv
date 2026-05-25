@@ -11,7 +11,7 @@ endif()
 
 # OpenCV: on Windows point -DOpenCV_DIR=C:/opencv/build
 # Linux/Docker use the system package (libopencv-dev)
-find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs highgui)
+find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs highgui dnn)
 
 add_executable(smarti-cv
   src/main.cpp

@@ -1,4 +1,5 @@
 #include <iostream>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -19,7 +20,10 @@ void print_usage() {
               << "  smarti-cv view --dataset <dir> [--board <index>]\n"
               << "      Browse dataset frames with ground-truth knot overlays.\n"
               << "  smarti-cv detect --dataset <dir> [--board <index>] [--save <dir>]\n"
+              << "                   [--method classical|onnx] [--model <file.onnx>]\n"
+              << "                   [--conf <f>] [--nms <f>] [--input-size <n>] [--class <id>]\n"
               << "      Detect knots in each frame and print their bounding boxes.\n"
+              << "      --method onnx runs a YOLOv5-format ONNX model via OpenCV DNN.\n"
               << "      With --save, write comparison overlays (green=truth, red=detected).\n";
 }
 
@@ -65,9 +69,8 @@ int run_view(int argc, char** argv) {
         }
     }
 
-    std::cout << "Loaded " << boards.size() << " boards, " << totalFrames << " frames ("
-              << labelled << " with labels, " << totalKnots << " knots) from " << *dataset
-              << "\n";
+    std::cout << "Loaded " << boards.size() << " boards, " << totalFrames << " frames (" << labelled
+              << " with labels, " << totalKnots << " knots) from " << *dataset << "\n";
 
     int startBoard = -1;
     if (const auto board = get_opt(argc, argv, "--board")) {
@@ -94,15 +97,15 @@ int run_view(int argc, char** argv) {
     if (outDir) {
         const smarti::Board& board = boards[bi];
         if (whole) {
-            const std::string out = *outDir + "/board" + std::to_string(board.index) +
-                                    "_whole_" + (vertical ? "v" : "h") + ".png";
+            const std::string out = *outDir + "/board" + std::to_string(board.index) + "_whole_" +
+                                    (vertical ? "v" : "h") + ".png";
             cv::imwrite(out, smarti::render_board_composite(board, vertical));
             std::cout << "wrote " << out << "\n";
         } else {
             for (std::size_t fi = 0; fi < board.frames.size(); ++fi) {
                 const std::string out = *outDir + "/board" + std::to_string(board.index) +
-                                        "_frame" +
-                                        std::to_string(board.frames[fi].frameNumber) + ".png";
+                                        "_frame" + std::to_string(board.frames[fi].frameNumber) +
+                                        ".png";
                 cv::imwrite(out, smarti::render_overlay(board, fi));
                 std::cout << "wrote " << out << "\n";
             }
@@ -128,6 +131,34 @@ int run_detect(int argc, char** argv) {
         onlyBoard = std::stoi(*board);
     }
 
+    // Build the requested detector backend.
+    const std::string method = get_opt(argc, argv, "--method").value_or("classical");
+    std::unique_ptr<smarti::KnotDetector> detector;
+    if (method == "onnx") {
+        smarti::OnnxParams op;
+        op.modelPath = get_opt(argc, argv, "--model").value_or("models/yolov5s.onnx");
+        if (const auto v = get_opt(argc, argv, "--conf")) {
+            op.confThreshold = std::stof(*v);
+        }
+        if (const auto v = get_opt(argc, argv, "--nms")) {
+            op.nmsThreshold = std::stof(*v);
+        }
+        if (const auto v = get_opt(argc, argv, "--input-size")) {
+            op.inputSize = std::stoi(*v);
+        }
+        if (const auto v = get_opt(argc, argv, "--class")) {
+            op.keepClassId = std::stoi(*v);
+        }
+        detector = smarti::make_onnx_detector(op);
+        std::cout << "detector: onnx (" << op.modelPath << ")\n";
+    } else if (method == "classical") {
+        detector = smarti::make_classical_detector();
+        std::cout << "detector: classical\n";
+    } else {
+        std::cerr << "error: unknown --method '" << method << "' (use classical|onnx)\n";
+        return 2;
+    }
+
     std::size_t totalDet = 0;
     for (const auto& board : boards) {
         if (onlyBoard >= 0 && board.index != onlyBoard) {
@@ -141,14 +172,13 @@ int run_detect(int argc, char** argv) {
                 continue;
             }
 
-            const std::vector<cv::Rect> detections = smarti::detect_knots(image);
+            const std::vector<cv::Rect> detections = detector->detect(image);
             totalDet += detections.size();
 
             std::cout << board.index << "_" << ref.frameNumber << ": " << detections.size()
                       << " knot(s)";
             for (const auto& r : detections) {
-                std::cout << "  [" << r.x << "," << r.y << "," << r.width << "," << r.height
-                          << "]";
+                std::cout << "  [" << r.x << "," << r.y << "," << r.width << "," << r.height << "]";
             }
             std::cout << "\n";
 
@@ -157,10 +187,10 @@ int run_detect(int argc, char** argv) {
                 for (const auto& box : smarti::load_yolo_labels(ref.labelPath)) {
                     gt.push_back(smarti::to_pixel_rect(box, image.size()));
                 }
-                const std::string status =
-                    std::to_string(board.index) + "_" + std::to_string(ref.frameNumber) +
-                    "  truth:" + std::to_string(gt.size()) +
-                    " det:" + std::to_string(detections.size());
+                const std::string status = std::to_string(board.index) + "_" +
+                                           std::to_string(ref.frameNumber) +
+                                           "  truth:" + std::to_string(gt.size()) +
+                                           " det:" + std::to_string(detections.size());
                 const std::string out = *outDir + "/board" + std::to_string(board.index) +
                                         "_frame" + std::to_string(ref.frameNumber) + "_det.png";
                 cv::imwrite(out, smarti::render_comparison(image, gt, detections, status));
