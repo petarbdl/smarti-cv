@@ -6,6 +6,7 @@
 #include <opencv2/core.hpp>
 
 #include "smarti/frame_loader.hpp"
+#include "smarti/label.hpp"
 
 namespace {
 
@@ -37,17 +38,20 @@ int run_view(int argc, char** argv) {
 
     std::size_t totalFrames = 0;
     std::size_t labelled = 0;
+    std::size_t totalKnots = 0;
     for (const auto& board : boards) {
         totalFrames += board.frames.size();
         for (const auto& f : board.frames) {
             if (!f.labelPath.empty()) {
                 ++labelled;
+                totalKnots += smarti::load_yolo_labels(f.labelPath).size();
             }
         }
     }
 
     std::cout << "Loaded " << boards.size() << " boards, " << totalFrames << " frames ("
-              << labelled << " with labels) from " << *dataset << "\n";
+              << labelled << " with labels, " << totalKnots << " knots) from " << *dataset
+              << "\n";
 
     // TODO(phase1 commit 4): open a highgui window and render frames + overlays.
     return 0;
