@@ -20,7 +20,10 @@ void print_usage() {
               << "      Browse dataset frames with ground-truth knot overlays.\n"
               << "  smarti-cv detect --dataset <dir> [--board <index>] [--save <dir>]\n"
               << "      Detect knots in each frame and print their bounding boxes.\n"
-              << "      With --save, write comparison overlays (green=truth, red=detected).\n";
+              << "      With --save, write overlays of the detections (red).\n"
+              << "  smarti-cv test --dataset <dir> [--board <index>] [--save <dir>]\n"
+              << "      Like detect, but --save overlays also draw ground truth (green)\n"
+              << "      alongside the detections (red) for comparison.\n";
 }
 
 // Minimal flag lookup: returns the value following `flag`, if present.
@@ -113,10 +116,13 @@ int run_view(int argc, char** argv) {
     return smarti::run_viewer(boards, startBoard);
 }
 
-int run_detect(int argc, char** argv) {
+// Shared driver for `detect` and `test`. They differ only in the saved overlay:
+// `test` (drawTruth) also draws ground-truth boxes in green for comparison.
+int run_detect(int argc, char** argv, bool drawTruth) {
+    const char* cmd = drawTruth ? "test" : "detect";
     const auto dataset = get_opt(argc, argv, "--dataset");
     if (!dataset) {
-        std::cerr << "error: detect requires --dataset <dir>\n";
+        std::cerr << "error: " << cmd << " requires --dataset <dir>\n";
         return 2;
     }
 
@@ -161,9 +167,12 @@ int run_detect(int argc, char** argv) {
                     std::to_string(board.index) + "_" + std::to_string(ref.frameNumber) +
                     "  truth:" + std::to_string(gt.size()) +
                     " det:" + std::to_string(detections.size());
+                const std::string suffix = drawTruth ? "_test.png" : "_det.png";
                 const std::string out = *outDir + "/board" + std::to_string(board.index) +
-                                        "_frame" + std::to_string(ref.frameNumber) + "_det.png";
-                cv::imwrite(out, smarti::render_comparison(image, gt, detections, status));
+                                        "_frame" + std::to_string(ref.frameNumber) + suffix;
+                cv::imwrite(out, drawTruth
+                                     ? smarti::render_evaluation(image, gt, detections, status)
+                                     : smarti::render_comparison(image, detections, status));
             }
         }
     }
@@ -186,7 +195,10 @@ int main(int argc, char** argv) {
             return run_view(argc, argv);
         }
         if (command == "detect") {
-            return run_detect(argc, argv);
+            return run_detect(argc, argv, /*drawTruth=*/false);
+        }
+        if (command == "test") {
+            return run_detect(argc, argv, /*drawTruth=*/true);
         }
     } catch (const std::exception& e) {
         std::cerr << "error: " << e.what() << "\n";

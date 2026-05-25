@@ -60,8 +60,14 @@ cv::Mat render_overlay(const Board& board, std::size_t frameIdx) {
     return image;
 }
 
-cv::Mat render_comparison(const cv::Mat& image, const std::vector<cv::Rect>& groundTruth,
-                          const std::vector<cv::Rect>& detections, const std::string& status) {
+namespace {
+
+// Shared body for the detection overlays: upscale a copy of `image`, draw
+// detected boxes in red and (when provided) ground-truth boxes in green, then a
+// status banner. `groundTruth == nullptr` skips the truth layer.
+cv::Mat draw_detection_overlay(const cv::Mat& image, const std::vector<cv::Rect>* groundTruth,
+                               const std::vector<cv::Rect>& detections,
+                               const std::string& status) {
     cv::Mat canvas = image.clone();
 
     // Upscale small frames so thin boxes and the banner stay legible.
@@ -73,8 +79,10 @@ cv::Mat render_comparison(const cv::Mat& image, const std::vector<cv::Rect>& gro
         return cv::Rect(r.x * scale, r.y * scale, r.width * scale, r.height * scale);
     };
 
-    for (const auto& r : groundTruth) {
-        cv::rectangle(canvas, scaled(r), cv::Scalar(0, 255, 0), 2); // ground truth: green
+    if (groundTruth) {
+        for (const auto& r : *groundTruth) {
+            cv::rectangle(canvas, scaled(r), cv::Scalar(0, 255, 0), 2); // ground truth: green
+        }
     }
     for (const auto& r : detections) {
         cv::rectangle(canvas, scaled(r), cv::Scalar(0, 0, 255), 1); // detection: red
@@ -84,6 +92,18 @@ cv::Mat render_comparison(const cv::Mat& image, const std::vector<cv::Rect>& gro
     cv::putText(canvas, status, {8, 18}, cv::FONT_HERSHEY_SIMPLEX, 0.55, {255, 255, 255}, 1,
                 cv::LINE_AA);
     return canvas;
+}
+
+} // namespace
+
+cv::Mat render_comparison(const cv::Mat& image, const std::vector<cv::Rect>& detections,
+                          const std::string& status) {
+    return draw_detection_overlay(image, nullptr, detections, status);
+}
+
+cv::Mat render_evaluation(const cv::Mat& image, const std::vector<cv::Rect>& groundTruth,
+                          const std::vector<cv::Rect>& detections, const std::string& status) {
+    return draw_detection_overlay(image, &groundTruth, detections, status);
 }
 
 cv::Mat render_board_composite(const Board& board, bool vertical) {
