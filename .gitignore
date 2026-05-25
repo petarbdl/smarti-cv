@@ -1,0 +1,9 @@
+# Build output
+build/
+out/
+*.user
+
+# IDE
+.vs/
+.vscode/
+.idea/
