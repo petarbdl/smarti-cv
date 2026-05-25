@@ -17,13 +17,8 @@ namespace {
 constexpr char kWindow[] = "smarti-cv viewer";
 constexpr int kMinDisplayHeight = 360; // upscale small frames for readability
 
-// Key codes. highgui returns letter keys directly; arrow keys come through
-// waitKeyEx as platform-specific extended codes (Windows values below).
+// Navigation is letter-key only (a/d/n/p/q)
 constexpr int kEsc = 27;
-constexpr int kArrowLeft = 0x250000;
-constexpr int kArrowUp = 0x260000;
-constexpr int kArrowRight = 0x270000;
-constexpr int kArrowDown = 0x280000;
 
 } // namespace
 
@@ -131,59 +126,73 @@ int run_viewer(const std::vector<Board>& boards, int startBoardIndex) {
     }
     std::size_t fi = 0;
 
-    std::cout << "Viewer controls: arrows or a/d (frame), n/p (board), q/Esc (quit)\n";
-    cv::namedWindow(kWindow, cv::WINDOW_AUTOSIZE);
+    std::cout << "Viewer controls: a/d (frame), n/p (board), q/Esc (quit)\n";
+    // WINDOW_GUI_NORMAL suppresses the Qt backend's navigation toolbar
+    cv::namedWindow(kWindow, cv::WINDOW_AUTOSIZE | cv::WINDOW_GUI_NORMAL);
 
     bool running = true;
+    bool dirty = true; // redraw the current frame on the next loop pass
     while (running) {
-        cv::imshow(kWindow, render_overlay(boards[bi], fi));
-        const int key = cv::waitKeyEx(0);
+        if (dirty) {
+            cv::imshow(kWindow, render_overlay(boards[bi], fi));
+            std::cout << "Viewer shows: board " << boards[bi].index << ", frame "
+                      << boards[bi].frames[fi].frameNumber << "\n";
+            dirty = false;
+        }
 
-        std::cout << "Viewer shows: board " << boards[bi].index << ", frame " << boards[bi].frames[fi].frameNumber << "\n";
+        const int key = cv::waitKeyEx(30);
 
-        switch (key) {
+        // Mask to the low byte so letter/Esc keys match on either backend:
+        // Qt reports plain ASCII ('d' == 0x64), while GTK adds a 0x100000
+        // keysym offset plus modifier state ('d' == 0x100064); both -> 0x64.
+        const int action = (key == -1) ? -1 : (key & 0xFF);
+        switch (action) {
+        case -1:
+            break; // poll timeout, no key pressed
         case 'q':
         case kEsc:
             running = false;
             break;
-        case kArrowRight:
         case 'd': // next frame, rolling into the next board
             if (fi + 1 < boards[bi].frames.size()) {
                 ++fi;
+                dirty = true;
             } else if (bi + 1 < boards.size()) {
                 ++bi;
                 fi = 0;
+                dirty = true;
             }
             break;
-        case kArrowLeft:
         case 'a': // previous frame, rolling into the previous board
             if (fi > 0) {
                 --fi;
+                dirty = true;
             } else if (bi > 0) {
                 --bi;
                 fi = boards[bi].frames.size() - 1;
+                dirty = true;
             }
             break;
-        case kArrowDown:
         case 'n': // next board
             if (bi + 1 < boards.size()) {
                 ++bi;
                 fi = 0;
+                dirty = true;
             }
             break;
-        case kArrowUp:
         case 'p': // previous board
             if (bi > 0) {
                 --bi;
                 fi = 0;
+                dirty = true;
             }
             break;
         default:
             break;
         }
 
-        // Window closed via the title-bar X.
-        if (cv::getWindowProperty(kWindow, cv::WND_PROP_VISIBLE) < 1) {
+        // Window closed via the title-bar
+        if (cv::getWindowProperty(kWindow, cv::WND_PROP_AUTOSIZE) < 0.0) {
             running = false;
         }
     }
