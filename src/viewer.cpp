@@ -65,6 +65,55 @@ cv::Mat render_overlay(const Board& board, std::size_t frameIdx) {
     return image;
 }
 
+cv::Mat render_board_composite(const Board& board, bool vertical) {
+    std::vector<cv::Mat> tiles;
+    int maxW = 0;
+    int maxH = 0;
+
+    for (const auto& ref : board.frames) {
+        cv::Mat image = cv::imread(ref.imagePath, cv::IMREAD_COLOR);
+        if (image.empty()) {
+            continue;
+        }
+        for (const auto& box : load_yolo_labels(ref.labelPath)) {
+            cv::rectangle(image, to_pixel_rect(box, image.size()), cv::Scalar(0, 255, 0), 2);
+        }
+        maxW = std::max(maxW, image.cols);
+        maxH = std::max(maxH, image.rows);
+        tiles.push_back(std::move(image));
+    }
+    if (tiles.empty()) {
+        return cv::Mat(64, 256, CV_8UC3, cv::Scalar(40, 40, 40));
+    }
+
+    // Pad each tile to the common cross-axis size and add a seam separator.
+    const cv::Scalar seam(0, 0, 255);
+    std::vector<cv::Mat> padded;
+    for (std::size_t i = 0; i < tiles.size(); ++i) {
+        const cv::Mat& t = tiles[i];
+        const int w = vertical ? maxW : t.cols;
+        const int h = vertical ? t.rows : maxH;
+        cv::Mat tile(h, w, CV_8UC3, cv::Scalar(0, 0, 0));
+        t.copyTo(tile(cv::Rect(0, 0, t.cols, t.rows)));
+        if (i > 0) {
+            if (vertical) {
+                cv::line(tile, {0, 0}, {w - 1, 0}, seam, 1);
+            } else {
+                cv::line(tile, {0, 0}, {0, h - 1}, seam, 1);
+            }
+        }
+        padded.push_back(std::move(tile));
+    }
+
+    cv::Mat composite;
+    if (vertical) {
+        cv::vconcat(padded, composite);
+    } else {
+        cv::hconcat(padded, composite);
+    }
+    return composite;
+}
+
 int run_viewer(const std::vector<Board>& boards, int startBoardIndex) {
     if (boards.empty()) {
         std::cerr << "no boards to view\n";

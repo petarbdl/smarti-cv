@@ -29,6 +29,16 @@ std::optional<std::string> get_opt(int argc, char** argv, const std::string& fla
     return std::nullopt;
 }
 
+// True if `flag` appears anywhere in the argument list.
+bool has_flag(int argc, char** argv, const std::string& flag) {
+    for (int i = 2; i < argc; ++i) {
+        if (flag == argv[i]) {
+            return true;
+        }
+    }
+    return false;
+}
+
 int run_view(int argc, char** argv) {
     const auto dataset = get_opt(argc, argv, "--dataset");
     if (!dataset) {
@@ -60,24 +70,38 @@ int run_view(int argc, char** argv) {
         startBoard = std::stoi(*board);
     }
 
-    // Headless: render the start board's frames to PNGs and exit (no window).
-    if (const auto outDir = get_opt(argc, argv, "--save")) {
-        std::size_t bi = 0;
-        if (startBoard >= 0) {
-            for (std::size_t i = 0; i < boards.size(); ++i) {
-                if (boards[i].index == startBoard) {
-                    bi = i;
-                    break;
-                }
+    // Resolve the starting board's position in the list.
+    std::size_t bi = 0;
+    if (startBoard >= 0) {
+        for (std::size_t i = 0; i < boards.size(); ++i) {
+            if (boards[i].index == startBoard) {
+                bi = i;
+                break;
             }
         }
+    }
+
+    const bool whole = has_flag(argc, argv, "--whole");
+    // Boards stitch end-to-end along X (columns), so horizontal is the default.
+    const bool vertical = get_opt(argc, argv, "--axis").value_or("h") == "v";
+    const auto outDir = get_opt(argc, argv, "--save");
+
+    // Headless: render to PNG(s) and exit (no window). Useful without a display.
+    if (outDir) {
         const smarti::Board& board = boards[bi];
-        for (std::size_t fi = 0; fi < board.frames.size(); ++fi) {
+        if (whole) {
             const std::string out = *outDir + "/board" + std::to_string(board.index) +
-                                    "_frame" + std::to_string(board.frames[fi].frameNumber) +
-                                    ".png";
-            cv::imwrite(out, smarti::render_overlay(board, fi));
+                                    "_whole_" + (vertical ? "v" : "h") + ".png";
+            cv::imwrite(out, smarti::render_board_composite(board, vertical));
             std::cout << "wrote " << out << "\n";
+        } else {
+            for (std::size_t fi = 0; fi < board.frames.size(); ++fi) {
+                const std::string out = *outDir + "/board" + std::to_string(board.index) +
+                                        "_frame" +
+                                        std::to_string(board.frames[fi].frameNumber) + ".png";
+                cv::imwrite(out, smarti::render_overlay(board, fi));
+                std::cout << "wrote " << out << "\n";
+            }
         }
         return 0;
     }
