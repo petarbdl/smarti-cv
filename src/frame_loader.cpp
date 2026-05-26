@@ -75,10 +75,9 @@ std::vector<Board> load_dataset(const std::string& datasetRoot) {
     std::vector<Board> result;
     result.reserve(boards.size());
     for (auto& [index, board] : boards) {
-        std::sort(board.frames.begin(), board.frames.end(),
-                  [](const FrameRef& a, const FrameRef& b) {
-                      return a.frameNumber < b.frameNumber;
-                  });
+        std::sort(
+            board.frames.begin(), board.frames.end(),
+            [](const FrameRef& a, const FrameRef& b) { return a.frameNumber < b.frameNumber; });
         result.push_back(std::move(board));
     }
     return result;

@@ -1,0 +1,9 @@
+# Keep the build context small and the COPY layer cache stable: exclude
+# everything that isn't source the image needs to compile smarti-cv.
+build/
+dataset/
+out/
+.git/
+.vscode/
+.vs/
+.idea/
