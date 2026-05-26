@@ -12,6 +12,8 @@ into boards, and gives you three things to do with them:
 - **`test`** — same as `detect`, but the saved overlays draw detections (red)
   *and* ground truth (green) side by side for comparison.
 
+> Developed and tested on Linux; **Ubuntu is the recommended environment.**
+
 ## Quick start
 
 ```sh
@@ -164,56 +166,6 @@ into `/home/me/Documents/detections`. Note `--dataset /data` and `--save /out`
 stay fixed; the env vars only change which host folders they map to. Passing a
 host path directly (e.g. `--dataset ./dataset`) fails — the container can't see
 it. (PNGs are written as `root` since the container runs as root.)
-
-### Linux — interactive window
-
-On Linux the interactive Qt window is forwarded to your host X server (on
-Wayland this works through XWayland), so it appears on your desktop exactly like
-the native build. `scripts/docker-run.sh` wires up the build, X11 authorization,
-and the `/data` + `/out` mounts for you:
-
-```sh
-# Rebuilds the image (layer-cached), then runs. Mounts ./dataset and ./out.
-scripts/docker-run.sh view --dataset /data
-scripts/docker-run.sh detect --dataset /data --board 3 --save /out
-```
-
-See [Paths inside the container](#paths-inside-the-container) above for using
-custom host directories via `SMARTI_DATASET` / `SMARTI_OUT`.
-
-To do the same by hand:
-
-```sh
-docker build -t smarti-cv .
-xhost +local:                                   # authorize local clients once
-docker run --rm -it \
-  -e DISPLAY="$DISPLAY" \
-  -v /tmp/.X11-unix:/tmp/.X11-unix:ro \
-  -v "$PWD/dataset:/data:ro" \
-  smarti-cv view --dataset /data
-```
-
-> The interactive window in Docker is **Linux only** — GUI forwarding relies on
-> the host's X11 (or XWayland) socket.
-
-### Windows / macOS — headless
-
-There's no X11 socket to forward, so don't open a window. Run **headless** with
-`--save`, which renders PNGs and exits. This works identically on Docker Desktop
-for Windows and macOS:
-
-```powershell
-# PowerShell — render board 3's frames
-docker build -t smarti-cv .
-docker run --rm `
-  -v C:\path\to\dataset:/data:ro `
-  -v C:\path\to\out:/out `
-  smarti-cv view --dataset /data --board 3 --save /out
-```
-
-The output PNGs land in the mounted output directory (`C:\path\to\out` above).
-`detect` and `test` work the same way — they never open a window, so they run
-headless on any platform.
 
 ## Building from source
 
