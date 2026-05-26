@@ -2,6 +2,7 @@
 
 #include <algorithm>
 
+#include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 
 namespace smarti {
@@ -14,17 +15,20 @@ int odd(int v) {
     return (v % 2 == 0) ? v + 1 : v;
 }
 
-// Merge boxes that overlap into their bounding union. A single knot whose ring
-// breaks into pieces during thresholding can yield several overlapping blobs;
-// collapsing them gives one box per knot. Repeats until no pair overlaps, since
-// a merge can create a box that now overlaps a third.
-std::vector<cv::Rect> merge_overlapping(std::vector<cv::Rect> boxes) {
+cv::Rect inflate(const cv::Rect& r, int pad) {
+    return cv::Rect(std::max(0, r.x - pad), std::max(0, r.y - pad), r.width + 2 * pad,
+                    r.height + 2 * pad);
+}
+
+} // namespace
+
+std::vector<cv::Rect> merge_boxes(std::vector<cv::Rect> boxes, int tol) {
     bool merged = true;
     while (merged) {
         merged = false;
         for (std::size_t i = 0; i < boxes.size(); ++i) {
             for (std::size_t j = i + 1; j < boxes.size(); ++j) {
-                if ((boxes[i] & boxes[j]).area() > 0) {
+                if ((inflate(boxes[i], tol) & inflate(boxes[j], tol)).area() > 0) {
                     boxes[i] |= boxes[j]; // bounding union
                     boxes.erase(boxes.begin() + static_cast<std::ptrdiff_t>(j));
                     merged = true;
@@ -38,8 +42,6 @@ std::vector<cv::Rect> merge_overlapping(std::vector<cv::Rect> boxes) {
     }
     return boxes;
 }
-
-} // namespace
 
 std::vector<cv::Rect> detect_knots(const cv::Mat& image, const DetectorParams& params) {
     std::vector<cv::Rect> knots;
@@ -107,7 +109,27 @@ std::vector<cv::Rect> detect_knots(const cv::Mat& image, const DetectorParams& p
         knots.push_back(box);
     }
 
-    return merge_overlapping(std::move(knots));
+    return merge_boxes(std::move(knots));
+}
+
+std::vector<cv::Rect> detect_board_knots(const Board& board, const DetectorParams& params) {
+    std::vector<cv::Rect> boardBoxes;
+    int xOffset = 0; // running start of the current frame along the board's X axis
+
+    for (const auto& ref : board.frames) {
+        const cv::Mat image = cv::imread(ref.imagePath, cv::IMREAD_COLOR);
+        if (image.empty()) {
+            continue; // skip unreadable frames; offsets resume from a known width below
+        }
+        for (cv::Rect box : detect_knots(image, params)) {
+            box.x += xOffset; // frame-local X -> board-space X
+            boardBoxes.push_back(box);
+        }
+        xOffset += image.cols;
+    }
+
+    // Stitch the per-frame detections, joining knots split across a seam.
+    return merge_boxes(std::move(boardBoxes), params.seamMergePx);
 }
 
 } // namespace smarti

@@ -11,8 +11,8 @@ namespace smarti {
 struct FrameRef {
     int boardIndex = 0;
     int frameNumber = 0;
-    std::string imagePath;       // absolute path to {board}_{frame}.png
-    std::string labelPath;       // matching .txt; empty if none exists
+    std::string imagePath; // absolute path to {board}_{frame}.png
+    std::string labelPath; // matching .txt; empty if none exists
 };
 
 // All frames belonging to one board, ordered by frameNumber so they can be

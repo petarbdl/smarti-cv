@@ -20,6 +20,9 @@ cv::Mat render_overlay(const Board& board, std::size_t frameIdx);
 // cross-axis size, and a thin red separator marks each frame seam.
 cv::Mat render_board_composite(const Board& board, bool vertical);
 
+// Stitch all of a board's frames into one plain composite
+cv::Mat stitch_board(const Board& board);
+
 // Draw detected boxes (red) over a copy of `image` (upscaling small frames for
 // readability), plus a status banner. Used by the `detect` command's --save
 // output. Ground-truth boxes are intentionally not drawn.
@@ -37,9 +40,9 @@ cv::Mat render_evaluation(const cv::Mat& image, const std::vector<cv::Rect>& gro
 // open on (-1 = first). Blocks until the user quits; returns a process exit code.
 //
 // Keys:
-//   right / d : next frame        left / a : previous frame
-//   down  / n : next board        up   / p : previous board
-//   q / Esc   : quit
+//   d : next frame    a : previous frame
+//   n : next board    p : previous board
+//   q / Esc : quit
 int run_viewer(const std::vector<Board>& boards, int startBoardIndex = -1);
 
 } // namespace smarti

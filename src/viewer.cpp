@@ -28,8 +28,8 @@ cv::Mat render_overlay(const Board& board, std::size_t frameIdx) {
     cv::Mat image = cv::imread(ref.imagePath, cv::IMREAD_COLOR);
     if (image.empty()) {
         image = cv::Mat(kMinDisplayHeight, 640, CV_8UC3, cv::Scalar(40, 40, 40));
-        cv::putText(image, "failed to read " + ref.imagePath, {10, 30},
-                    cv::FONT_HERSHEY_SIMPLEX, 0.5, {0, 0, 255}, 1);
+        cv::putText(image, "failed to read " + ref.imagePath, {10, 30}, cv::FONT_HERSHEY_SIMPLEX,
+                    0.5, {0, 0, 255}, 1);
         return image;
     }
 
@@ -49,11 +49,10 @@ cv::Mat render_overlay(const Board& board, std::size_t frameIdx) {
     }
 
     // Status banner across the top.
-    const std::string status = "board " + std::to_string(board.index) + "  frame " +
-                               std::to_string(ref.frameNumber) + "   [" +
-                               std::to_string(frameIdx + 1) + "/" +
-                               std::to_string(board.frames.size()) + "]   knots: " +
-                               std::to_string(boxes.size());
+    const std::string status =
+        "board " + std::to_string(board.index) + "  frame " + std::to_string(ref.frameNumber) +
+        "   [" + std::to_string(frameIdx + 1) + "/" + std::to_string(board.frames.size()) +
+        "]   knots: " + std::to_string(boxes.size());
     cv::rectangle(image, {0, 0}, {image.cols, 26}, {0, 0, 0}, cv::FILLED);
     cv::putText(image, status, {8, 18}, cv::FONT_HERSHEY_SIMPLEX, 0.55, {255, 255, 255}, 1,
                 cv::LINE_AA);
@@ -66,8 +65,7 @@ namespace {
 // detected boxes in red and (when provided) ground-truth boxes in green, then a
 // status banner. `groundTruth == nullptr` skips the truth layer.
 cv::Mat draw_detection_overlay(const cv::Mat& image, const std::vector<cv::Rect>* groundTruth,
-                               const std::vector<cv::Rect>& detections,
-                               const std::string& status) {
+                               const std::vector<cv::Rect>& detections, const std::string& status) {
     cv::Mat canvas = image.clone();
 
     // Upscale small frames so thin boxes and the banner stay legible.
@@ -104,6 +102,33 @@ cv::Mat render_comparison(const cv::Mat& image, const std::vector<cv::Rect>& det
 cv::Mat render_evaluation(const cv::Mat& image, const std::vector<cv::Rect>& groundTruth,
                           const std::vector<cv::Rect>& detections, const std::string& status) {
     return draw_detection_overlay(image, &groundTruth, detections, status);
+}
+
+cv::Mat stitch_board(const Board& board) {
+    std::vector<cv::Mat> tiles;
+    int totalW = 0;
+    int maxH = 0;
+    for (const auto& ref : board.frames) {
+        cv::Mat image = cv::imread(ref.imagePath, cv::IMREAD_COLOR);
+        if (image.empty()) {
+            continue;
+        }
+        totalW += image.cols;
+        maxH = std::max(maxH, image.rows);
+        tiles.push_back(std::move(image));
+    }
+    if (tiles.empty()) {
+        return cv::Mat(64, 256, CV_8UC3, cv::Scalar(40, 40, 40));
+    }
+
+    // Place each frame at the running x offset
+    cv::Mat composite(maxH, totalW, CV_8UC3, cv::Scalar(0, 0, 0));
+    int x = 0;
+    for (const auto& t : tiles) {
+        t.copyTo(composite(cv::Rect(x, 0, t.cols, t.rows)));
+        x += t.cols;
+    }
+    return composite;
 }
 
 cv::Mat render_board_composite(const Board& board, bool vertical) {
